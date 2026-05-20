@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Evaluación TM - Centros ceremoniales</title>
+    <title>AncestrAR - Centros Ceremoniales</title>
     <script type="importmap">
     {
       "imports": {
@@ -29,7 +29,7 @@
 <body>
     <div id="ui">
         <div style="text-align: center;">
-            <h2 style="color: #fff; margin-bottom: 20px;">SISTEMA AR MATRICIAL (6 TARGETS)</h2>
+            <h2 style="color: #fff; margin-bottom: 20px;">AncestrAR (6 TARGETS)</h2>
             <button id="startButton" class="btn-start">INICIAR ESCANEO</button>
             <p id="status" style="color: #00ff00; margin-top: 15px;">Listo para inicializar hardware</p>
         </div>
@@ -45,13 +45,16 @@
         const mixers = [], sounds = [], clickableModels = [];
         let isDragging = false, selectedObject = null, isLogging = false;
         let previousMousePosition = { x: 0, y: 0 };
+        
+        // Control anti-duplicado del ciclo asíncrono
+        let isEngineStarted = false; 
 
         const raycaster = new THREE.Raycaster();
         const mouse = new THREE.Vector2();
         const status = document.querySelector("#status");
 
         // =============================================================
-        // CONTROL DE FASE: Cambia a 0, 1 o 2 para habilitar las columnas
+        // CONTROL DE FASE ADMINISTRATIVA (0, 1 o 2)
         // =============================================================
         const GRUPO_ACTIVO = 1; 
 
@@ -95,7 +98,173 @@
         ];
 
         const start = async () => {
+            if (isEngineStarted) return;
+            isEngineStarted = true;
+
             status.innerText = "Cargando hardware y lentes AR...";
+            
+            // Limpieza del contenedor para evitar fallos de renderizado paralelos
+            const containerElement = document.querySelector("#container");
+            containerElement.innerHTML = ""; 
 
             mindarThree = new MindARThree({
-                container: document.querySelector("#container"),
+                container: containerElement,
+                imageTargetSrc: './evaluacionTM.mind',
+            });
+
+            ({ renderer, scene, camera } = mindarThree);
+            
+            const ambientLight = new THREE.AmbientLight(0xffffff, 1.5);
+            scene.add(ambientLight);
+            
+            const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+            dirLight.position.set(0, 5, 5);
+            scene.add(dirLight);
+
+            const listener = new THREE.AudioListener();
+            camera.add(listener);
+            const audioLoader = new THREE.AudioLoader();
+            const loader = new GLTFLoader();
+
+            MODEL_MATRIX.forEach((opcionesObjetivo, indexAnchor) => {
+                const anchor = mindarThree.addAnchor(indexAnchor);
+                const data = opcionesObjetivo[GRUPO_ACTIVO];
+
+                if (!data) return;
+
+                const s = new THREE.Audio(listener);
+                audioLoader.load(data.sound, (buffer) => {
+                    s.setBuffer(buffer);
+                    s.setVolume(0.5);
+                }, undefined, (err) => console.error(`Error Audio (${data.sound}):`, err));
+                sounds[indexAnchor] = s;
+
+                loader.load(data.model, (gltf) => {
+                    const model = gltf.scene;
+                    
+                    model.traverse((node) => {
+                        if (node.isMesh) {
+                            node.material.depthWrite = true;
+                            node.material.needsUpdate = true;
+                            node.userData = { name: data.model, targetIndex: indexAnchor };
+                        }
+                    });
+
+                    // Normalizador de cajas geométricas para mallas asimétricas
+                    const box = new THREE.Box3().setFromObject(model);
+                    const size = box.getSize(new THREE.Vector3());
+                    const center = box.getCenter(new THREE.Vector3());
+
+                    model.position.x += (model.position.x - center.x);
+                    model.position.y += (model.position.y - center.y);
+                    model.position.z += (model.position.z - center.z);
+
+                    if (size.length() > 5) {
+                        const factorCorte = 2.0 / size.length();
+                        model.scale.set(factorCorte, factorCorte, factorCorte);
+                    } else {
+                        model.scale.set(data.scale, data.scale, data.scale);
+                    }
+
+                    // Rotación estructural de 90° para proyección de pared
+                    model.rotation.set(Math.PI / 2, 0, 0); 
+                    model.userData = { name: data.model, targetIndex: indexAnchor };
+                    
+                    anchor.group.add(model);
+                    clickableModels.push(model);
+
+                    if (gltf.animations.length > 0) {
+                        const mixer = new THREE.AnimationMixer(model);
+                        mixer.clipAction(gltf.animations[0]).play();
+                        mixers.push(mixer);
+                    }
+                }, undefined, (err) => {
+                    console.error(`Error crítico cargando modelo (${data.model}):`, err);
+                });
+
+                anchor.onTargetFound = () => {
+                    status.innerText = `AncestrAR - Detectado: ${data.model}`;
+                    if (sounds[indexAnchor] && !sounds[indexAnchor].isPlaying) sounds[indexAnchor].play();
+                    
+                    if (!isLogging) {
+                        enviarLog('DETECCION_AUTO', data.model, indexAnchor);
+                        bloquearLogs();
+                    }
+                };
+
+                anchor.onTargetLost = () => {
+                    if (sounds[indexAnchor]) sounds[indexAnchor].pause();
+                };
+            });
+
+            const container = document.querySelector("#container");
+            
+            container.addEventListener('pointerdown', (e) => {
+                mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+                mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+                raycaster.setFromCamera(mouse, camera);
+                
+                const validModels = clickableModels.filter(m => m !== null && m !== undefined);
+                const intersects = raycaster.intersectObjects(validModels, true);
+
+                if (intersects.length > 0) {
+                    isDragging = true;
+                    let target = intersects[0].object;
+                    while (target.parent && !target.userData.name) target = target.parent;
+                    
+                    if (target.userData.name) {
+                        selectedObject = target;
+                        previousMousePosition = { x: e.clientX, y: e.clientY };
+
+                        if (!isLogging) {
+                            enviarLog('MANIPULACION_TACTIL', target.userData.name, target.userData.targetIndex);
+                            bloquearLogs();
+                        }
+                    }
+                }
+            });
+
+            container.addEventListener('pointermove', (e) => {
+                if (!isDragging || !selectedObject) return;
+                const deltaX = e.clientX - previousMousePosition.x;
+                const deltaY = e.clientY - previousMousePosition.y;
+                
+                // Desplazamiento relativo adaptado al eje Z para pared
+                selectedObject.position.x += deltaX * 0.005;
+                selectedObject.position.z += deltaY * 0.005; 
+                previousMousePosition = { x: e.clientX, y: e.clientY };
+            });
+
+            container.addEventListener('pointerup', () => {
+                isDragging = false;
+                selectedObject = null;
+            });
+
+            await mindarThree.start();
+            document.querySelector("#ui").style.display = "none";
+
+            const clock = new THREE.Clock();
+            renderer.setAnimationLoop(() => {
+                const delta = clock.getDelta();
+                mixers.forEach(m => m.update(delta));
+                renderer.render(scene, camera);
+            });
+        };
+
+        const enviarLog = (accion, modelo, index) => {
+            if (window.ReactNativeWebView) {
+                window.ReactNativeWebView.postMessage(JSON.stringify({
+                    tipo: 'ACCION_USUARIO', detalle: accion, modelo: modelo, targetIndex: index
+                }));
+            }
+        };
+
+        const bloquearLogs = () => {
+            isLogging = true;
+            setTimeout(() => { isLogging = false; }, 4000);
+        };
+
+        document.querySelector("#startButton").addEventListener('click', start);
+    </script>
+</body>
+</html>
