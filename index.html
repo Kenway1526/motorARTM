@@ -50,19 +50,14 @@
         const mouse = new THREE.Vector2();
         const status = document.querySelector("#status");
 
-        // =========================================================================
-        // CONFIGURACIÓN CENTRALIZADA PARA EL ADMINISTRADOR
-        // Elige el set de modelos activo cambiando este número (0, 1 o 2)
-        // 0 = Modelos principales | 1 = Modelos alternativos A | 2 = Modelos alternativos B
-        // =========================================================================
         const GRUPO_ACTIVO = 0; 
 
         const MODEL_MATRIX = [
             //teotihuacan
             [
-                { model: 'teotihuacan1.glb', sound: 'chal.mp3', scale: 0.15 },       // Opción 0 (Activa si GRUPO_ACTIVO = 0)
-                { model: 'teotihuacan2.glb', sound: 'chal.mp3', scale: 0.15 },  // Opción 1 (Activa si GRUPO_ACTIVO = 1)
-                { model: 'teotihuacan3.glb', sound: 'chal.mp3', scale: 0.12 }     // Opción 2 (Activa si GRUPO_ACTIVO = 2)
+                { model: 'teotihuacan1.glb', sound: 'chal.mp3', scale: 0.15 },
+                { model: 'teotihuacan2.glb', sound: 'chal.mp3', scale: 0.15 },
+                { model: 'teotihuacan3.glb', sound: 'chal.mp3', scale: 0.12 }
             ],
             //chichenitza
             [
@@ -72,27 +67,27 @@
             ],
             //montealban
             [
-                { model: 'montealban1.glb', sound: 'PMonteAlban.mp3', scale: 0.2 },//ok
+                { model: 'montealban1.glb', sound: 'PMonteAlban.mp3', scale: 0.2 },
                 { model: 'montealban2.glb', sound: 'PMonteAlban.mp3', scale: 0.18 },
                 { model: 'montealban3.glb', sound: 'PMonteAlban.mp3', scale: 0.2 }
             ],
             //templomayor
             [
-                { model: 'templomayor1.glb', sound: 'PTemploMayor.mp3', scale: 0.3 },//ok
+                { model: 'templomayor1.glb', sound: 'PTemploMayor.mp3', scale: 0.3 },
                 { model: 'templomayor2.glb', sound: 'teotihuacan.mp3', scale: 0.25 },
-                { model: 'templomayor3.glb', sound: 'piedrasol.mp3', scale: 0.35 }//ok
+                { model: 'templomayor3.glb', sound: 'piedrasol.mp3', scale: 0.35 }
             ],
             //palenque
             [
-                { model: 'palenque1.glb', sound: 'PPalenque.mp3', scale: 0.1 },//ok
+                { model: 'palenque1.glb', sound: 'PPalenque.mp3', scale: 0.1 },
                 { model: 'palenque2.glb', sound: 's5_a.mp3', scale: 0.12 },
                 { model: 'palenque3.glb', sound: 's5_b.mp3', scale: 0.08 }
             ],
             //tula
             [
-                { model: 'tula1.glb', sound: 'PTula.mp3', scale: 0.2 },//ok
+                { model: 'tula1.glb', sound: 'PTula.mp3', scale: 0.2 },
                 { model: 'tula2.glb', sound: 's6_a.mp3', scale: 0.22 },
-                { model: 'tula3.glb', sound: 'FTula.mp3', scale: 0.18 }//ok
+                { model: 'tula3.glb', sound: 'FTula.mp3', scale: 0.18 }
             ]
         ];
 
@@ -101,37 +96,53 @@
 
             mindarThree = new MindARThree({
                 container: document.querySelector("#container"),
-                imageTargetSrc: './evaluacionTM.mind', // Archivo unificado de 6 objetivos
+                imageTargetSrc: './evaluacionTM.mind',
             });
 
             ({ renderer, scene, camera } = mindarThree);
-            scene.add(new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1.5));
+            
+            // Iluminación global reforzada
+            const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
+            scene.add(ambientLight);
+            
+            const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
+            dirLight.position.set(0, 5, 5);
+            scene.add(dirLight);
 
             const listener = new THREE.AudioListener();
             camera.add(listener);
             const audioLoader = new THREE.AudioLoader();
             const loader = new GLTFLoader();
 
-            // Mapeo dinámico basado en la matriz y el GRUPO_ACTIVO elegido por el admin
             MODEL_MATRIX.forEach((opcionesObjetivo, indexAnchor) => {
                 const anchor = mindarThree.addAnchor(indexAnchor);
-                const data = opcionesObjetivo[GRUPO_ACTIVO]; // Extrae la opción activa configurada arriba
+                const data = opcionesObjetivo[GRUPO_ACTIVO];
 
-                // Carga del Audio correspondiente al modelo activo
+                // Carga de Audio
                 const s = new THREE.Audio(listener);
                 audioLoader.load(data.sound, (buffer) => {
                     s.setBuffer(buffer);
                     s.setVolume(0.5);
-                });
+                }, undefined, (err) => console.error("Error Audio:", err));
                 sounds[indexAnchor] = s;
 
-                // Carga del Modelo 3D activo
+                // Carga de Modelo con corrección de iluminación local y matriz
                 loader.load(data.model, (gltf) => {
                     const model = gltf.scene;
-                    model.scale.set(data.scale, data.scale, data.scale);
-                    model.rotation.x = Math.PI / 2;
                     
-                    // Metadatos para el registro asíncrono
+                    // Forzar a que los materiales reaccionen correctamente a la luz
+                    model.traverse((node) => {
+                        if (node.isMesh) {
+                            node.material.depthWrite = true;
+                            node.material.needsUpdate = true;
+                        }
+                    });
+
+                    model.scale.set(data.scale, data.scale, data.scale);
+                    
+                    // Corrección de rotación base de MindAR (0,0,0 los alinea planos sobre la imagen)
+                    model.rotation.set(0, 0, 0); 
+                    
                     model.userData = { name: data.model, targetIndex: indexAnchor };
                     
                     anchor.group.add(model);
@@ -142,7 +153,7 @@
                         mixer.clipAction(gltf.animations[0]).play();
                         mixers.push(mixer);
                     }
-                });
+                }, undefined, (err) => console.error("Error GLTF:", err));
 
                 anchor.onTargetFound = () => {
                     status.innerText = `Detectado: ${data.model}`;
@@ -159,7 +170,7 @@
                 };
             });
 
-            // GESTIÓN TÁCTIL (Desplazamiento Suave por Deltas)
+            // GESTIÓN TÁCTIL MÓVIL (Soporte PointerEvents)
             const container = document.querySelector("#container");
             
             container.addEventListener('pointerdown', (e) => {
@@ -190,6 +201,7 @@
                 const deltaX = e.clientX - previousMousePosition.x;
                 const deltaY = e.clientY - previousMousePosition.y;
                 
+                // Movimiento relativo en los ejes correctos del grupo de anclaje
                 selectedObject.position.x += deltaX * 0.005;
                 selectedObject.position.y -= deltaY * 0.005; 
                 
