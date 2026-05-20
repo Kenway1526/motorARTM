@@ -50,6 +50,9 @@
         const mouse = new THREE.Vector2();
         const status = document.querySelector("#status");
 
+        // =============================================================
+        // CONTROL DE FASE: Cambia a 0, 1 o 2. ¡Ahora totalmente estable!
+        // =============================================================
         const GRUPO_ACTIVO = 1; 
 
         const MODEL_MATRIX = [
@@ -101,11 +104,10 @@
 
             ({ renderer, scene, camera } = mindarThree);
             
-            // Iluminación global reforzada
-            const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
+            const ambientLight = new THREE.AmbientLight(0xffffff, 1.5);
             scene.add(ambientLight);
             
-            const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
+            const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
             dirLight.position.set(0, 5, 5);
             scene.add(dirLight);
 
@@ -118,15 +120,18 @@
                 const anchor = mindarThree.addAnchor(indexAnchor);
                 const data = opcionesObjetivo[GRUPO_ACTIVO];
 
-                // Carga de Audio
+                // Protección en caso de datos faltantes o mal estructurados en la matriz
+                if (!data) return;
+
+                // Carga Segura de Audio
                 const s = new THREE.Audio(listener);
                 audioLoader.load(data.sound, (buffer) => {
                     s.setBuffer(buffer);
                     s.setVolume(0.5);
-                }, undefined, (err) => console.error("Error Audio:", err));
+                }, undefined, (err) => console.error(`Error cargando audio (${data.sound}):`, err));
                 sounds[indexAnchor] = s;
 
-                // Carga de Modelo
+                // Carga Defensiva de Modelos GLTF
                 loader.load(data.model, (gltf) => {
                     const model = gltf.scene;
                     
@@ -134,16 +139,15 @@
                         if (node.isMesh) {
                             node.material.depthWrite = true;
                             node.material.needsUpdate = true;
+                            // Clonamos el mapeo de metadatos a las mallas hijas para asegurar el funcionamiento del Raycaster
+                            node.userData = { name: data.model, targetIndex: indexAnchor };
                         }
                     });
 
                     model.scale.set(data.scale, data.scale, data.scale);
-                    
-                    // =============================================================
-                    // MODIFICACIÓN REMOTA: ROTACIÓN PARED (90 grados en eje X)
-                    // =============================================================
                     model.rotation.set(Math.PI / 2, 0, 0); 
                     
+                    // Metadatos en el nodo raíz del modelo
                     model.userData = { name: data.model, targetIndex: indexAnchor };
                     
                     anchor.group.add(model);
@@ -154,7 +158,11 @@
                         mixer.clipAction(gltf.animations[0]).play();
                         mixers.push(mixer);
                     }
-                }, undefined, (err) => console.error("Error GLTF:", err));
+                }, undefined, (err) => {
+                    console.error(`Error crítico cargando el modelo (${data.model}):`, err);
+                    status.style.color = "#ff0000";
+                    status.innerText = `Falta archivo: ${data.model}`;
+                });
 
                 anchor.onTargetFound = () => {
                     status.innerText = `Detectado: ${data.model}`;
@@ -171,7 +179,6 @@
                 };
             });
 
-            // GESTIÓN TÁCTIL MÓVIL (Soporte PointerEvents)
             const container = document.querySelector("#container");
             
             container.addEventListener('pointerdown', (e) => {
@@ -179,19 +186,27 @@
                 mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
                 raycaster.setFromCamera(mouse, camera);
                 
-                const intersects = raycaster.intersectObjects(clickableModels, true);
+                // Filtramos el arreglo para evitar procesar objetos que no hayan terminado de cargar en memoria
+                const validModels = clickableModels.filter(m => m !== null && m !== undefined);
+                const intersects = raycaster.intersectObjects(validModels, true);
 
                 if (intersects.length > 0) {
                     isDragging = true;
                     let target = intersects[0].object;
-                    while (target.parent && !target.userData.name) target = target.parent;
                     
-                    selectedObject = target;
-                    previousMousePosition = { x: e.clientX, y: e.clientY };
+                    // Escalamos en el árbol buscando la propiedad heredada de los metadatos
+                    while (target.parent && !target.userData.name) {
+                        target = target.parent;
+                    }
+                    
+                    if (target.userData.name) {
+                        selectedObject = target;
+                        previousMousePosition = { x: e.clientX, y: e.clientY };
 
-                    if (!isLogging) {
-                        enviarLog('MANIPULACION_TACTIL', target.userData.name, target.userData.targetIndex);
-                        bloquearLogs();
+                        if (!isLogging) {
+                            enviarLog('MANIPULACION_TACTIL', target.userData.name, target.userData.targetIndex);
+                            bloquearLogs();
+                        }
                     }
                 }
             });
@@ -202,10 +217,6 @@
                 const deltaX = e.clientX - previousMousePosition.x;
                 const deltaY = e.clientY - previousMousePosition.y;
                 
-                // =============================================================
-                // AJUSTE TÁCTIL: Reorientación de ejes para proyección de pared
-                // Deslizar arriba/abajo ahora traslada sobre Z (profundidad)
-                // =============================================================
                 selectedObject.position.x += deltaX * 0.005;
                 selectedObject.position.z += deltaY * 0.005; 
                 
