@@ -126,11 +126,10 @@
                 }, undefined, (err) => console.error("Error Audio:", err));
                 sounds[indexAnchor] = s;
 
-                // Carga de Modelo con corrección de iluminación local y matriz
+                // Carga de Modelo
                 loader.load(data.model, (gltf) => {
                     const model = gltf.scene;
                     
-                    // Forzar a que los materiales reaccionen correctamente a la luz
                     model.traverse((node) => {
                         if (node.isMesh) {
                             node.material.depthWrite = true;
@@ -140,8 +139,10 @@
 
                     model.scale.set(data.scale, data.scale, data.scale);
                     
-                    // Corrección de rotación base de MindAR (0,0,0 los alinea planos sobre la imagen)
-                    model.rotation.set(0, 0, 0); 
+                    // =============================================================
+                    // MODIFICACIÓN REMOTA: ROTACIÓN PARED (90 grados en eje X)
+                    // =============================================================
+                    model.rotation.set(Math.PI / 2, 0, 0); 
                     
                     model.userData = { name: data.model, targetIndex: indexAnchor };
                     
@@ -201,9 +202,12 @@
                 const deltaX = e.clientX - previousMousePosition.x;
                 const deltaY = e.clientY - previousMousePosition.y;
                 
-                // Movimiento relativo en los ejes correctos del grupo de anclaje
+                // =============================================================
+                // AJUSTE TÁCTIL: Reorientación de ejes para proyección de pared
+                // Deslizar arriba/abajo ahora traslada sobre Z (profundidad)
+                // =============================================================
                 selectedObject.position.x += deltaX * 0.005;
-                selectedObject.position.y -= deltaY * 0.005; 
+                selectedObject.position.z += deltaY * 0.005; 
                 
                 previousMousePosition = { x: e.clientX, y: e.clientY };
             });
