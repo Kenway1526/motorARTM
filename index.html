@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Evaluación TM - Centros ceremoniales</title>
+    <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.147.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.147.0/examples/jsm/",
+        "mindar-image-three": "https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-three.prod.js"
+      }
+    }
+    </script>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; touch-action: none; font-family: sans-serif; }
+        #container { width: 100vw; height: 100vh; }
+        #ui {
+            position: absolute; top: 0; left: 0; z-index: 10; width: 100%; height: 100%;
+            display: flex; justify-content: center; align-items: center;
+            background: rgba(0, 0, 0, 0.8); color: #00ff00;
+        }
+        .btn-start {
+            padding: 18px 35px; background: #00ff00; color: black;
+            border: none; border-radius: 10px; cursor: pointer; font-weight: bold; font-size: 18px;
+        }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        <div style="text-align: center;">
+            <h2 style="color: #fff; margin-bottom: 20px;">SISTEMA AR MATRICIAL (6 TARGETS)</h2>
+            <button id="startButton" class="btn-start">INICIAR ESCANEO</button>
+            <p id="status" style="color: #00ff00; margin-top: 15px;">Listo para inicializar hardware</p>
+        </div>
+    </div>
+    <div id="container"></div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { MindARThree } from 'mindar-image-three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+        let mindarThree, scene, camera, renderer;
+        const mixers = [], sounds = [], clickableModels = [];
+        let isDragging = false, selectedObject = null, isLogging = false;
+        let previousMousePosition = { x: 0, y: 0 };
+
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        const status = document.querySelector("#status");
+
+        // =========================================================================
+        // CONFIGURACIÓN CENTRALIZADA PARA EL ADMINISTRADOR
+        // Elige el set de modelos activo cambiando este número (0, 1 o 2)
+        // 0 = Modelos principales | 1 = Modelos alternativos A | 2 = Modelos alternativos B
+        // =========================================================================
+        const GRUPO_ACTIVO = 0; 
+
+        const MODEL_MATRIX = [
+            //teotihuacan
+            [
+                { model: 'teotihuacan1.glb', sound: 'chal.mp3', scale: 0.15 },       // Opción 0 (Activa si GRUPO_ACTIVO = 0)
+                { model: 'teotihuacan2.glb', sound: 'chal.mp3', scale: 0.15 },  // Opción 1 (Activa si GRUPO_ACTIVO = 1)
+                { model: 'teotihuacan3.glb', sound: 'chal.mp3', scale: 0.12 }     // Opción 2 (Activa si GRUPO_ACTIVO = 2)
+            ],
+            //chichenitza
+            [
+                { model: 'chichenitza1.glb', sound: 'chac.mp3', scale: 0.06 },
+                { model: 'chichenitza2.glb', sound: 'chac.mp3', scale: 0.05 },
+                { model: 'chichenitza3.glb', sound: 'chac.mp3', scale: 0.07 }
+            ],
+            //montealban
+            [
+                { model: 'montealban1.glb', sound: 'PMonteAlban.mp3', scale: 0.2 },//ok
+                { model: 'montealban2.glb', sound: 'PMonteAlban.mp3', scale: 0.18 },
+                { model: 'montealban3.glb', sound: 'PMonteAlban.mp3', scale: 0.2 }
+            ],
+            //templomayor
+            [
+                { model: 'templomayor1.glb', sound: 'PTemploMayor.mp3', scale: 0.3 },//ok
+                { model: 'templomayor2.glb', sound: 'teotihuacan.mp3', scale: 0.25 },
+                { model: 'templomayor3.glb', sound: 'piedrasol.mp3', scale: 0.35 }//ok
+            ],
+            //palenque
+            [
+                { model: 'palenque1.glb', sound: 'PPalenque.mp3', scale: 0.1 },//ok
+                { model: 'palenque2.glb', sound: 's5_a.mp3', scale: 0.12 },
+                { model: 'palenque3.glb', sound: 's5_b.mp3', scale: 0.08 }
+            ],
+            //tula
+            [
+                { model: 'tula1.glb', sound: 'PTula.mp3', scale: 0.2 },//ok
+                { model: 'tula2.glb', sound: 's6_a.mp3', scale: 0.22 },
+                { model: 'tula3.glb', sound: 'FTula.mp3', scale: 0.18 }//ok
+            ]
+        ];
+
+        const start = async () => {
+            status.innerText = "Cargando hardware y lentes AR...";
+
+            mindarThree = new MindARThree({
+                container: document.querySelector("#container"),
+                imageTargetSrc: './evaluacionTM.mind', // Archivo unificado de 6 objetivos
+            });
+
+            ({ renderer, scene, camera } = mindarThree);
+            scene.add(new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1.5));
+
+            const listener = new THREE.AudioListener();
+            camera.add(listener);
+            const audioLoader = new THREE.AudioLoader();
+            const loader = new GLTFLoader();
+
+            // Mapeo dinámico basado en la matriz y el GRUPO_ACTIVO elegido por el admin
+            MODEL_MATRIX.forEach((opcionesObjetivo, indexAnchor) => {
+                const anchor = mindarThree.addAnchor(indexAnchor);
+                const data = opcionesObjetivo[GRUPO_ACTIVO]; // Extrae la opción activa configurada arriba
+
+                // Carga del Audio correspondiente al modelo activo
+                const s = new THREE.Audio(listener);
+                audioLoader.load(data.sound, (buffer) => {
+                    s.setBuffer(buffer);
+                    s.setVolume(0.5);
+                });
+                sounds[indexAnchor] = s;
+
+                // Carga del Modelo 3D activo
+                loader.load(data.model, (gltf) => {
+                    const model = gltf.scene;
+                    model.scale.set(data.scale, data.scale, data.scale);
+                    model.rotation.x = Math.PI / 2;
+                    
+                    // Metadatos para el registro asíncrono
+                    model.userData = { name: data.model, targetIndex: indexAnchor };
+                    
+                    anchor.group.add(model);
+                    clickableModels.push(model);
+
+                    if (gltf.animations.length > 0) {
+                        const mixer = new THREE.AnimationMixer(model);
+                        mixer.clipAction(gltf.animations[0]).play();
+                        mixers.push(mixer);
+                    }
+                });
+
+                anchor.onTargetFound = () => {
+                    status.innerText = `Detectado: ${data.model}`;
+                    if (sounds[indexAnchor] && !sounds[indexAnchor].isPlaying) sounds[indexAnchor].play();
+                    
+                    if (!isLogging) {
+                        enviarLog('DETECCION_AUTO', data.model, indexAnchor);
+                        bloquearLogs();
+                    }
+                };
+
+                anchor.onTargetLost = () => {
+                    if (sounds[indexAnchor]) sounds[indexAnchor].pause();
+                };
+            });
+
+            // GESTIÓN TÁCTIL (Desplazamiento Suave por Deltas)
+            const container = document.querySelector("#container");
+            
+            container.addEventListener('pointerdown', (e) => {
+                mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+                mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+                raycaster.setFromCamera(mouse, camera);
+                
+                const intersects = raycaster.intersectObjects(clickableModels, true);
+
+                if (intersects.length > 0) {
+                    isDragging = true;
+                    let target = intersects[0].object;
+                    while (target.parent && !target.userData.name) target = target.parent;
+                    
+                    selectedObject = target;
+                    previousMousePosition = { x: e.clientX, y: e.clientY };
+
+                    if (!isLogging) {
+                        enviarLog('MANIPULACION_TACTIL', target.userData.name, target.userData.targetIndex);
+                        bloquearLogs();
+                    }
+                }
+            });
+
+            container.addEventListener('pointermove', (e) => {
+                if (!isDragging || !selectedObject) return;
+                
+                const deltaX = e.clientX - previousMousePosition.x;
+                const deltaY = e.clientY - previousMousePosition.y;
+                
+                selectedObject.position.x += deltaX * 0.005;
+                selectedObject.position.y -= deltaY * 0.005; 
+                
+                previousMousePosition = { x: e.clientX, y: e.clientY };
+            });
+
+            container.addEventListener('pointerup', () => {
+                isDragging = false;
+                selectedObject = null;
+            });
+
+            await mindarThree.start();
+            document.querySelector("#ui").style.display = "none";
+
+            const clock = new THREE.Clock();
+            renderer.setAnimationLoop(() => {
+                const delta = clock.getDelta();
+                mixers.forEach(m => m.update(delta));
+                renderer.render(scene, camera);
+            });
+        };
+
+        const enviarLog = (accion, modelo, index) => {
+            if (window.ReactNativeWebView) {
+                window.ReactNativeWebView.postMessage(JSON.stringify({
+                    tipo: 'ACCION_USUARIO',
+                    detalle: accion,
+                    modelo: modelo,
+                    targetIndex: index
+                }));
+            }
+        };
+
+        const bloquearLogs = () => {
+            isLogging = true;
+            setTimeout(() => { isLogging = false; }, 4000);
+        };
+
+        document.querySelector("#startButton").addEventListener('click', start);
+    </script>
+</body>
+</html>
