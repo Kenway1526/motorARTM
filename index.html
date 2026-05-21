@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AncestrAR - Centros Ceremoniales</title>
+    <title>AncestrAR - Total Integración</title>
     <script type="importmap">
     {
       "imports": {
@@ -29,7 +29,7 @@
 <body>
     <div id="ui">
         <div style="text-align: center;">
-            <h2 style="color: #fff; margin-bottom: 20px;">AncestrAR (6 TARGETS)</h2>
+            <h2 style="color: #fff; margin-bottom: 20px;">AncestrAR (18 TARGETS CONTINUOS)</h2>
             <button id="startButton" class="btn-start">INICIAR ESCANEO</button>
             <p id="status" style="color: #00ff00; margin-top: 15px;">Listo para inicializar hardware</p>
         </div>
@@ -46,7 +46,6 @@
         let isDragging = false, selectedObject = null, isLogging = false;
         let previousMousePosition = { x: 0, y: 0 };
         
-        // Control anti-duplicado del ciclo asíncrono
         let isEngineStarted = false; 
 
         const raycaster = new THREE.Raycaster();
@@ -54,66 +53,59 @@
         const status = document.querySelector("#status");
 
         // =============================================================
-        // CONTROL DE FASE ADMINISTRATIVA (0, 1 o 2)
+        // MATRIZ APLANADA (18 Elementos Secuenciales para los 18 Objetivos)
+        // El orden corresponde exactamente al índice del nuevo archivo .mind
         // =============================================================
-        const GRUPO_ACTIVO = 1; 
+        const MODEL_LIST = [
+            // Teotihuacán (0, 1, 2)
+            { model: 'teotihuacan1.glb', sound: 'chal.mp3', scale: 2.0 },
+            { model: 'teotihuacan2.glb', sound: 'chal.mp3', scale: 2.0 },
+            { model: 'teotihuacan3.glb', sound: 'chal.mp3', scale: 2.0 },
 
-        const MODEL_MATRIX = [
-            //teotihuacan
-            [
-                { model: 'teotihuacan1.glb', sound: 'chal.mp3', scale: 2.0 },
-                { model: 'teotihuacan2.glb', sound: 'chal.mp3', scale: 2.0 },
-                { model: 'teotihuacan3.glb', sound: 'chal.mp3', scale: 2.0 }
-            ],
-            //chichenitza
-            [
-                { model: 'chichenitza1.glb', sound: 'chac.mp3', scale: 2.0 },
-                { model: 'chichenitza2.glb', sound: 'chac.mp3', scale: 2.0 },
-                { model: 'chichenitza3.glb', sound: 'chac.mp3', scale: 2.0 }
-            ],
-            //montealban
-            [
-                { model: 'montealban1.glb', sound: 'PMonteAlban.mp3', scale: 2.0 },
-                { model: 'montealban2.glb', sound: 'PMonteAlban.mp3', scale: 2.0 },
-                { model: 'montealban3.glb', sound: 'PMonteAlban.mp3', scale: 2.0 }
-            ],
-            //templomayor
-            [
-                { model: 'templomayor.glb', sound: 'PTemploMayor.mp3', scale: 2.0 },
-                { model: 'templomayor2.glb', sound: 'teotihuacan.mp3', scale: 2.0 },
-                { model: 'templomayor3.glb', sound: 'piedrasol.mp3', scale: 2.0 }
-            ],
-            //palenque
-            [
-                { model: 'palenque1.glb', sound: 'PPalenque.mp3', scale: 2.0 },
-                { model: 'palenque2.glb', sound: 's5_a.mp3', scale: 2.0 },
-                { model: 'palenque3.glb', sound: 's5_b.mp3', scale: 2.0 }
-            ],
-            //tula
-            [
-                { model: 'tula1.glb', sound: 'PTula.mp3', scale: 2.0 },
-                { model: 'tula2.glb', sound: 's6_a.mp3', scale: 2.0 },
-                { model: 'tula3.glb', sound: 'FTula.mp3', scale: 2.0 }
-            ]
+            // Chichén Itzá (3, 4, 5)
+            { model: 'chichenitza1.glb', sound: 'chac.mp3', scale: 2.0 },
+            { model: 'chichenitza2.glb', sound: 'chac.mp3', scale: 2.0 },
+            { model: 'chichenitza3.glb', sound: 'chac.mp3', scale: 2.0 },
+
+            // Monte Albán (6, 7, 8)
+            { model: 'montealban.glb', sound: 'PMonteAlban.mp3', scale: 2.0 },
+            { model: 'montealban2.glb', sound: 'PMonteAlban.mp3', scale: 2.0 },
+            { model: 'montealban3.glb', sound: 'PMonteAlban.mp3', scale: 2.0 },
+
+            // Templo Mayor (9, 10, 11)
+            { model: 'templomayor1.glb', sound: 'PTemploMayor.mp3', scale: 2.0 },
+            { model: 'templomayor2.glb', sound: 'teotihuacan.mp3', scale: 2.0 },
+            { model: 'templomayor3.glb', sound: 'piedrasol.mp3', scale: 2.0 },
+
+            // Palenque (12, 13, 14)
+            { model: 'palenque1.glb', sound: 'PPalenque.mp3', scale: 2.0 },
+            { model: 'palenque2.glb', sound: 's5_a.mp3', scale: 2.0 },
+            { model: 'palenque3.glb', sound: 's5_b.mp3', scale: 2.0 },
+
+            // Tula (15, 16, 17)
+            { model: 'tula1.glb', sound: 'PTula.mp3', scale: 2.0 },
+            { model: 'tula2.glb', sound: 's6_a.mp3', scale: 2.0 },
+            { model: 'tula3.glb', sound: 'FTula.mp3', scale: 2.0 }
         ];
 
         const start = async () => {
             if (isEngineStarted) return;
             isEngineStarted = true;
 
-            status.innerText = "Cargando hardware y lentes AR...";
+            status.innerText = "Inicializando visor AncestrAR...";
             
-            // Limpieza del contenedor para evitar fallos de renderizado paralelos
             const containerElement = document.querySelector("#container");
             containerElement.innerHTML = ""; 
 
             mindarThree = new MindARThree({
                 container: containerElement,
-                imageTargetSrc: './evaluacionTM.mind',
+                // Asegúrate de compilar tus 18 imágenes objetivo en este archivo único
+                imageTargetSrc: './evaluacionTM.mind', 
             });
 
             ({ renderer, scene, camera } = mindarThree);
             
+            // Iluminación optimizada para entornos PBR móviles
             const ambientLight = new THREE.AmbientLight(0xffffff, 1.5);
             scene.add(ambientLight);
             
@@ -126,12 +118,11 @@
             const audioLoader = new THREE.AudioLoader();
             const loader = new GLTFLoader();
 
-            MODEL_MATRIX.forEach((opcionesObjetivo, indexAnchor) => {
+            // Ciclo dinámico sobre la lista plana de 18 elementos
+            MODEL_LIST.forEach((data, indexAnchor) => {
                 const anchor = mindarThree.addAnchor(indexAnchor);
-                const data = opcionesObjetivo[GRUPO_ACTIVO];
 
-                if (!data) return;
-
+                // Carga de Audio de sesión
                 const s = new THREE.Audio(listener);
                 audioLoader.load(data.sound, (buffer) => {
                     s.setBuffer(buffer);
@@ -139,6 +130,7 @@
                 }, undefined, (err) => console.error(`Error Audio (${data.sound}):`, err));
                 sounds[indexAnchor] = s;
 
+                // Carga de Modelo con normalizador geométrico adaptativo
                 loader.load(data.model, (gltf) => {
                     const model = gltf.scene;
                     
@@ -150,15 +142,17 @@
                         }
                     });
 
-                    // Normalizador de cajas geométricas para mallas asimétricas
+                    // Forzar cálculo de caja para unificación de escala de assets
                     const box = new THREE.Box3().setFromObject(model);
                     const size = box.getSize(new THREE.Vector3());
                     const center = box.getCenter(new THREE.Vector3());
 
+                    // Re-centrado automático sobre el pivote del anclaje
                     model.position.x += (model.position.x - center.x);
                     model.position.y += (model.position.y - center.y);
                     model.position.z += (model.position.z - center.z);
 
+                    // Escalado defensivo
                     if (size.length() > 5) {
                         const factorCorte = 2.0 / size.length();
                         model.scale.set(factorCorte, factorCorte, factorCorte);
@@ -166,7 +160,7 @@
                         model.scale.set(data.scale, data.scale, data.scale);
                     }
 
-                    // Rotación estructural de 90° para proyección de pared
+                    // Rotación estructural fija a 90° para proyección ortogonal desde la pared
                     model.rotation.set(Math.PI / 2, 0, 0); 
                     model.userData = { name: data.model, targetIndex: indexAnchor };
                     
@@ -179,7 +173,7 @@
                         mixers.push(mixer);
                     }
                 }, undefined, (err) => {
-                    console.error(`Error crítico cargando modelo (${data.model}):`, err);
+                    console.error(`Error cargando el asset 3D (${data.model}):`, err);
                 });
 
                 anchor.onTargetFound = () => {
@@ -229,7 +223,7 @@
                 const deltaX = e.clientX - previousMousePosition.x;
                 const deltaY = e.clientY - previousMousePosition.y;
                 
-                // Desplazamiento relativo adaptado al eje Z para pared
+                // Desplazamiento reactivo adaptado a la orientación en eje Z de la pared
                 selectedObject.position.x += deltaX * 0.005;
                 selectedObject.position.z += deltaY * 0.005; 
                 previousMousePosition = { x: e.clientX, y: e.clientY };
