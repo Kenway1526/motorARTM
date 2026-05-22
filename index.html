@@ -52,10 +52,7 @@
         const mouse = new THREE.Vector2();
         const status = document.querySelector("#status");
 
-        // =============================================================
-        // MATRIZ APLANADA (18 Elementos Secuenciales para los 18 Objetivos)
-        // El orden corresponde exactamente al índice del nuevo archivo .mind
-        // =============================================================
+        // Matriz Lineal Sincronizada con el nuevo .mind
         const MODEL_LIST = [
             // Teotihuacán (0, 1, 2)
             { model: 'teotihuacan1.glb', sound: 'chal.mp3', scale: 2.0 },
@@ -68,7 +65,7 @@
             { model: 'chichenitza3.glb', sound: 'chac.mp3', scale: 2.0 },
 
             // Monte Albán (6, 7, 8)
-            { model: 'montealban.glb', sound: 'PMonteAlban.mp3', scale: 2.0 },
+            { model: 'montealban1.glb', sound: 'PMonteAlban.mp3', scale: 2.0 },
             { model: 'montealban2.glb', sound: 'PMonteAlban.mp3', scale: 2.0 },
             { model: 'montealban3.glb', sound: 'PMonteAlban.mp3', scale: 2.0 },
 
@@ -97,20 +94,23 @@
             const containerElement = document.querySelector("#container");
             containerElement.innerHTML = ""; 
 
+            // =============================================================
+            // CORRECCIÓN CRÍTICA: maxTrack AMPLILADO A 18 
+            // Esto le permite al motor buscar e iterar sobre los 18 descriptores simultáneos
+            // =============================================================
             mindarThree = new MindARThree({
                 container: containerElement,
-                // Asegúrate de compilar tus 18 imágenes objetivo en este archivo único
                 imageTargetSrc: './evaluacionTM.mind', 
+                maxTrack: 18 
             });
 
             ({ renderer, scene, camera } = mindarThree);
             
-            // Iluminación optimizada para entornos PBR móviles
-            const ambientLight = new THREE.AmbientLight(0xffffff, 1.5);
+            const ambientLight = new THREE.AmbientLight(0xffffff, 1.6);
             scene.add(ambientLight);
             
-            const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
-            dirLight.position.set(0, 5, 5);
+            const dirLight = new THREE.DirectionalLight(0xffffff, 1.4);
+            dirLight.position.set(0, 10, 10);
             scene.add(dirLight);
 
             const listener = new THREE.AudioListener();
@@ -118,11 +118,9 @@
             const audioLoader = new THREE.AudioLoader();
             const loader = new GLTFLoader();
 
-            // Ciclo dinámico sobre la lista plana de 18 elementos
             MODEL_LIST.forEach((data, indexAnchor) => {
                 const anchor = mindarThree.addAnchor(indexAnchor);
 
-                // Carga de Audio de sesión
                 const s = new THREE.Audio(listener);
                 audioLoader.load(data.sound, (buffer) => {
                     s.setBuffer(buffer);
@@ -130,29 +128,29 @@
                 }, undefined, (err) => console.error(`Error Audio (${data.sound}):`, err));
                 sounds[indexAnchor] = s;
 
-                // Carga de Modelo con normalizador geométrico adaptativo
                 loader.load(data.model, (gltf) => {
                     const model = gltf.scene;
                     
                     model.traverse((node) => {
                         if (node.isMesh) {
+                            // Forzar renderizado y anulación de frustum culling (evita que se vuelvan invisibles al mover la cámara)
                             node.material.depthWrite = true;
+                            node.material.dontAnimate = false;
+                            node.castShadow = true;
+                            node.frustumCulled = false; 
                             node.material.needsUpdate = true;
                             node.userData = { name: data.model, targetIndex: indexAnchor };
                         }
                     });
 
-                    // Forzar cálculo de caja para unificación de escala de assets
                     const box = new THREE.Box3().setFromObject(model);
                     const size = box.getSize(new THREE.Vector3());
                     const center = box.getCenter(new THREE.Vector3());
 
-                    // Re-centrado automático sobre el pivote del anclaje
                     model.position.x += (model.position.x - center.x);
                     model.position.y += (model.position.y - center.y);
                     model.position.z += (model.position.z - center.z);
 
-                    // Escalado defensivo
                     if (size.length() > 5) {
                         const factorCorte = 2.0 / size.length();
                         model.scale.set(factorCorte, factorCorte, factorCorte);
@@ -160,7 +158,6 @@
                         model.scale.set(data.scale, data.scale, data.scale);
                     }
 
-                    // Rotación estructural fija a 90° para proyección ortogonal desde la pared
                     model.rotation.set(Math.PI / 2, 0, 0); 
                     model.userData = { name: data.model, targetIndex: indexAnchor };
                     
@@ -223,7 +220,6 @@
                 const deltaX = e.clientX - previousMousePosition.x;
                 const deltaY = e.clientY - previousMousePosition.y;
                 
-                // Desplazamiento reactivo adaptado a la orientación en eje Z de la pared
                 selectedObject.position.x += deltaX * 0.005;
                 selectedObject.position.z += deltaY * 0.005; 
                 previousMousePosition = { x: e.clientX, y: e.clientY };
